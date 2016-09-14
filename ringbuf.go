@@ -1,5 +1,7 @@
 package ringbuf
 
+import "sync"
+
 // Overwriting ring buffer
 type Buffer struct {
 	data    []byte
@@ -7,6 +9,8 @@ type Buffer struct {
 	cursor  int64
 	written int64
 }
+
+var mutex = &sync.Mutex{}
 
 func NewBuffer(size int64) *Buffer {
 	if size <= 0 {
@@ -21,6 +25,9 @@ func NewBuffer(size int64) *Buffer {
 // Write len(buf) bytes to the internal ring,
 // overriding older data if necessary.
 func (b *Buffer) Write(buf []byte) (int, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	// Account for total bytes written
 	n := len(buf)
 	b.written += int64(n)
@@ -41,15 +48,21 @@ func (b *Buffer) Write(buf []byte) (int, error) {
 }
 
 func (b *Buffer) Size() int64 {
+	mutex.Lock()
+	defer mutex.Unlock()
 	return b.size
 }
 
 func (b *Buffer) TotalWritten() int64 {
+	mutex.Lock()
+	defer mutex.Unlock()
 	return b.written
 }
 
 // Return copy slice of the unwinded ring
 func (b *Buffer) Bytes() []byte {
+	mutex.Lock()
+	defer mutex.Unlock()
 	if b.written >= b.size {
 		var out = make([]byte, b.size)
 		copy(out, b.data[b.cursor:])
@@ -66,10 +79,14 @@ func (b *Buffer) Bytes() []byte {
 }
 
 func (b *Buffer) Reset() {
+	mutex.Lock()
+	defer mutex.Unlock()
 	b.cursor = 0
 	b.written = 0
 }
 
 func (b *Buffer) String() string {
+	mutex.Lock()
+	defer mutex.Unlock()
 	return string(b.Bytes())
 }
