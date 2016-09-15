@@ -169,7 +169,6 @@ func (reader *RingReader) Read(p []byte) (n int, err error) {
 				if avail < n {
 					n = avail
 				}
-				fmt.Printf("ring.cursor=%d, reader.cursor=%d, n=%d\n", ring.cursor, reader.cursor, n)
 				copy(p, ring.data[reader.cursor:reader.cursor+n])
 				reader.cursor = ((reader.cursor + n) % ring.size)
 				return n, nil
