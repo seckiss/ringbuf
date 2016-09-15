@@ -58,7 +58,8 @@ func (b *Buffer) Write(buf []byte) (int, error) {
 	// invalidate stale RingReaders
 	var invalid []int
 	for i, reader := range b.readers {
-		if b.isBetween(reader.cursor, writeCursorBefore, writeCursorAfter) {
+		// if overflow or reader cursor between
+		if n > b.size || b.isBetween(reader.cursor, writeCursorBefore, writeCursorAfter) {
 			reader.valid = false
 			invalid = append(invalid, i)
 		}
@@ -155,20 +156,13 @@ func (reader *RingReader) Read(p []byte) (n int, err error) {
 	defer mutex.RUnlock()
 	var ring = reader.ring
 	for {
-		fmt.Println("11")
 		if !reader.valid {
-			fmt.Println("22")
 			return 0, fmt.Errorf("Reader invalidated because writer overwrote the reader cursor")
 		} else {
-			fmt.Println("33")
 			if ring.cursor == reader.cursor {
 				// nothing to read so wait
-				fmt.Println("44")
 				cond.Wait()
-				fmt.Println("55")
 			} else if ring.cursor > reader.cursor {
-
-				fmt.Println("66")
 				var avail = int(ring.cursor - reader.cursor)
 				var n = len(p)
 				if avail < n {
@@ -179,7 +173,6 @@ func (reader *RingReader) Read(p []byte) (n int, err error) {
 				reader.cursor = ((reader.cursor + n) % ring.size)
 				return n, nil
 			} else {
-				fmt.Println("77")
 				var toend = ring.size - reader.cursor
 				var avail = int(toend + ring.cursor)
 				var n = len(p)
