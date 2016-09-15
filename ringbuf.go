@@ -149,7 +149,7 @@ func (b *Buffer) NewReaderOffset(cursorOffset int) *RingReader {
 	}
 	defer mutex.Unlock()
 	// ensure that the cursorStart is positive
-	var cursorStart = (2*b.cursor - cursorOffset) % b.size
+	var cursorStart = (b.size + b.cursor - cursorOffset) % b.size
 	var reader = &RingReader{b, cursorStart, true}
 	b.readers = append(b.readers, reader)
 	return reader
