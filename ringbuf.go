@@ -8,17 +8,17 @@ import (
 // Overwriting ring buffer
 type Buffer struct {
 	data []byte
-	size int64
+	size int
 	//write cursor
-	cursor  int64
+	cursor  int
 	written int64
 	readers []*RingReader
 }
 
 var mutex = &sync.RWMutex{}
-var cond = sync.NewCond(mutex)
+var cond = sync.NewCond(mutex.RLocker())
 
-func NewBuffer(size int64) *Buffer {
+func NewBuffer(size int) *Buffer {
 	if size <= 0 {
 		panic("Size must be positive")
 	}
@@ -41,17 +41,17 @@ func (b *Buffer) Write(buf []byte) (int, error) {
 	b.written += int64(n)
 
 	// If the buffer is larger than ring, then truncate to last b.size bytes
-	if int64(n) > b.size {
-		buf = buf[int64(n)-b.size:]
+	if n > b.size {
+		buf = buf[n-b.size:]
 	}
 
 	var toend = b.size - b.cursor
 	copy(b.data[b.cursor:], buf)
-	if int64(len(buf)) > toend {
+	if len(buf) > toend {
 		copy(b.data, buf[toend:])
 	}
 
-	b.cursor = ((b.cursor + int64(len(buf))) % b.size)
+	b.cursor = ((b.cursor + len(buf)) % b.size)
 
 	var writeCursorAfter = b.cursor
 
@@ -79,7 +79,7 @@ func (b *Buffer) Write(buf []byte) (int, error) {
 }
 
 // circular between (excluding left endpoint, including right endpoint)
-func (b *Buffer) isBetween(cursor int64, rangeFrom int64, rangeTo int64) bool {
+func (b *Buffer) isBetween(cursor int, rangeFrom int, rangeTo int) bool {
 	if rangeFrom >= b.size || rangeTo >= b.size {
 		panic("rangeFrom or rangeTo out of buffer.size range")
 	}
@@ -101,7 +101,7 @@ func intcontains(s []int, e int) bool {
 	return false
 }
 
-func (b *Buffer) Size() int64 {
+func (b *Buffer) Size() int {
 	mutex.RLock()
 	defer mutex.RUnlock()
 	return b.size
@@ -117,13 +117,13 @@ func (b *Buffer) TotalWritten() int64 {
 func (b *Buffer) Bytes() []byte {
 	mutex.RLock()
 	defer mutex.RUnlock()
-	if b.written >= b.size {
+	if b.written >= int64(b.size) {
 		var out = make([]byte, b.size)
 		copy(out, b.data[b.cursor:])
 		copy(out[b.size-b.cursor:], b.data[:b.cursor])
 		return out
 	} else {
-		if b.written != b.cursor {
+		if b.written != int64(b.cursor) {
 			panic("Serious inconsistency")
 		}
 		var out = make([]byte, b.written)
@@ -132,61 +132,69 @@ func (b *Buffer) Bytes() []byte {
 	}
 }
 
-func (b *Buffer) Reset() {
-	mutex.Lock()
-	defer mutex.Unlock()
-	b.cursor = 0
-	b.written = 0
-}
-
 func (b *Buffer) String() string {
 	return string(b.Bytes())
 }
 
 func (b *Buffer) NewReader() *RingReader {
-	var reader = &RingReader{b, 0, true}
+	mutex.Lock()
+	defer mutex.Unlock()
+	var reader = &RingReader{b, b.cursor, true}
 	b.readers = append(b.readers, reader)
 	return reader
 }
 
 type RingReader struct {
 	ring   *Buffer
-	cursor int64
+	cursor int
 	valid  bool
 }
 
 func (reader *RingReader) Read(p []byte) (n int, err error) {
 	mutex.RLock()
-	if !reader.valid {
-		return 0, fmt.Errorf("Reader invalidated because writer overwrote the reader cursor")
-	}
 	defer mutex.RUnlock()
-	cond.Wait()
-	if !reader.valid {
-		return 0, fmt.Errorf("Reader invalidated because writer overwrote the reader cursor")
-	} else {
-		var ring = reader.ring
-		if ring.cursor == reader.cursor {
-			// nothing to read but state ok
-			return 0, nil
-		} else if ring.cursor > reader.cursor {
-			var avail = int(ring.cursor - reader.cursor)
-			var n = len(p)
-			if avail < n {
-				n = avail
-			}
-			copy(p, ring.data[reader.ring.cursor:reader.cursor])
-			return n, nil
+	var ring = reader.ring
+	for {
+		fmt.Println("11")
+		if !reader.valid {
+			fmt.Println("22")
+			return 0, fmt.Errorf("Reader invalidated because writer overwrote the reader cursor")
 		} else {
-			var toend = ring.size - reader.cursor
-			var avail = int(toend + ring.cursor)
-			var n = len(p)
-			if avail < n {
-				n = avail
+			fmt.Println("33")
+			if ring.cursor == reader.cursor {
+				// nothing to read so wait
+				fmt.Println("44")
+				cond.Wait()
+				fmt.Println("55")
+			} else if ring.cursor > reader.cursor {
+
+				fmt.Println("66")
+				var avail = int(ring.cursor - reader.cursor)
+				var n = len(p)
+				if avail < n {
+					n = avail
+				}
+				fmt.Printf("ring.cursor=%d, reader.cursor=%d, n=%d\n", ring.cursor, reader.cursor, n)
+				copy(p, ring.data[reader.cursor:reader.cursor+n])
+				reader.cursor = ((reader.cursor + n) % ring.size)
+				return n, nil
+			} else {
+				fmt.Println("77")
+				var toend = ring.size - reader.cursor
+				var avail = int(toend + ring.cursor)
+				var n = len(p)
+				if avail < n {
+					n = avail
+				}
+				if n > ring.size-reader.cursor {
+					copy(p, ring.data[reader.cursor:])
+					copy(p[toend:], ring.data[:ring.cursor])
+				} else {
+					copy(p, ring.data[reader.cursor:reader.cursor+n])
+				}
+				reader.cursor = ((reader.cursor + n) % ring.size)
+				return n, nil
 			}
-			copy(p, ring.data[reader.cursor:])
-			copy(p[toend:], ring.data[:ring.cursor])
-			return n, nil
 		}
 	}
 }
