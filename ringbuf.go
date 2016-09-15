@@ -2,6 +2,7 @@ package ringbuf
 
 import (
 	"fmt"
+	"log"
 	"sync"
 )
 
@@ -20,7 +21,7 @@ var cond = sync.NewCond(mutex.RLocker())
 
 func NewBuffer(size int) *Buffer {
 	if size <= 0 {
-		panic("Size must be positive")
+		log.Fatal("Size must be positive")
 	}
 	return &Buffer{
 		size: size,
@@ -82,7 +83,7 @@ func (b *Buffer) Write(buf []byte) (int, error) {
 // circular between (excluding left endpoint, including right endpoint)
 func (b *Buffer) isBetween(cursor int, rangeFrom int, rangeTo int) bool {
 	if rangeFrom >= b.size || rangeTo >= b.size {
-		panic("rangeFrom or rangeTo out of buffer.size range")
+		log.Fatal("rangeFrom or rangeTo out of buffer.size range")
 	}
 	if rangeTo > rangeFrom {
 		return cursor > rangeFrom && cursor <= rangeTo
@@ -125,7 +126,7 @@ func (b *Buffer) Bytes() []byte {
 		return out
 	} else {
 		if b.written != int64(b.cursor) {
-			panic("Serious inconsistency")
+			log.Fatal("Serious inconsistency")
 		}
 		var out = make([]byte, b.written)
 		copy(out, b.data[:b.written])
