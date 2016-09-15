@@ -144,11 +144,12 @@ func (b *Buffer) NewReader() *RingReader {
 
 func (b *Buffer) NewReader(cursorOffset int) *RingReader {
 	mutex.Lock()
-	if cursorOffset < 0 || cursorOffset > b.cursor {
-		log.Fatal("cursorOffset must be in [0, b.cursor] range")
+	if cursorOffset < 0 || cursorOffset > b.size {
+		log.Fatal("cursorOffset must be in [0, b.size] range")
 	}
 	defer mutex.Unlock()
-	var cursorStart = b.cursor - cursorOffset
+	// ensure that the cursorStart is positive
+	var cursorStart = (2*b.cursor - cursorOffset) % b.size
 	var reader = &RingReader{b, cursorStart, true}
 	b.readers = append(b.readers, reader)
 	return reader
