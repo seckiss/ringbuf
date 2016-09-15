@@ -139,10 +139,10 @@ func (b *Buffer) String() string {
 }
 
 func (b *Buffer) NewReader() *RingReader {
-	return b.NewReader(0)
+	return b.NewReaderOffset(0)
 }
 
-func (b *Buffer) NewReader(cursorOffset int) *RingReader {
+func (b *Buffer) NewReaderOffset(cursorOffset int) *RingReader {
 	mutex.Lock()
 	if cursorOffset < 0 || cursorOffset > b.size {
 		log.Fatal("cursorOffset must be in [0, b.size] range")
